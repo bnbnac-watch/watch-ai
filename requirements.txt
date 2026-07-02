@@ -1,0 +1,4 @@
+fastapi
+uvicorn
+asyncpg
+youtube-transcript-api
