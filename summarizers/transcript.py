@@ -1,9 +1,9 @@
 import re
 import logging
-from abc import ABC, abstractmethod
 from youtube_transcript_api import YouTubeTranscriptApi
 
 from providers.base import BaseProvider
+from summarizers.base import BaseSummarizer
 
 logger = logging.getLogger(__name__)
 
@@ -36,12 +36,6 @@ def _to_mmss(seconds: float) -> str:
 
 def _build_transcript_text(entries) -> str:
     return "\n".join(f"[{_to_mmss(e.start)}] {e.text}" for e in entries)
-
-
-class BaseSummarizer(ABC):
-    @abstractmethod
-    async def summarize(self, url: str) -> str | None:
-        ...
 
 
 class TranscriptSummarizer(BaseSummarizer):

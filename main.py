@@ -9,7 +9,8 @@ from pydantic import BaseModel
 
 import db
 from providers.gemini import GeminiProvider
-from summarizer import BaseSummarizer, TranscriptSummarizer
+from summarizers.base import BaseSummarizer
+from summarizers.transcript import TranscriptSummarizer
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
