@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager
 
 import uvicorn
@@ -7,14 +8,23 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 import db
-import summarizer
 from providers.gemini import GeminiProvider
+from summarizer import BaseSummarizer, TranscriptSummarizer
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
 _semaphore = asyncio.Semaphore(1)
 _provider = GeminiProvider()
+
+SUMMARIZER_TYPE = os.getenv("SUMMARIZER", "transcript")
+
+def _build_summarizer() -> BaseSummarizer:
+    if SUMMARIZER_TYPE == "transcript":
+        return TranscriptSummarizer(_provider)
+    raise ValueError(f"알 수 없는 SUMMARIZER: {SUMMARIZER_TYPE}")
+
+_summarizer = _build_summarizer()
 
 RPD_LIMIT = 1500
 
@@ -45,7 +55,7 @@ async def summarize_video(req: SummarizeRequest):
             logger.warning("RPD 한도 초과 (오늘 %d회)", count)
             raise HTTPException(status_code=429, detail="RPD 한도 초과")
 
-        result = await summarizer.summarize(req.url, _provider)
+        result = await _summarizer.summarize(req.url)
         if result is None:
             raise HTTPException(status_code=404, detail="자막 없음")
 

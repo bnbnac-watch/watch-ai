@@ -1,5 +1,6 @@
 import re
 import logging
+from abc import ABC, abstractmethod
 from youtube_transcript_api import YouTubeTranscriptApi
 
 from providers.base import BaseProvider
@@ -37,16 +38,26 @@ def _build_transcript_text(entries) -> str:
     return "\n".join(f"[{_to_mmss(e.start)}] {e.text}" for e in entries)
 
 
-async def summarize(url: str, provider: BaseProvider) -> str | None:
-    vid = _extract_video_id(url)
-    video_url = _VIDEO_URL_BASE.format(vid=vid)
-    try:
-        entries = list(YouTubeTranscriptApi().fetch(vid, languages=["ko", "en"]))
-    except Exception as e:
-        logger.warning("자막 없음 (%s): %s", vid, e)
-        return None
+class BaseSummarizer(ABC):
+    @abstractmethod
+    async def summarize(self, url: str) -> str | None:
+        ...
 
-    transcript = _build_transcript_text(entries)
-    prompt = _PROMPT_TEMPLATE.format(url=video_url, transcript=transcript)
-    logger.info("요약 요청: %s (자막 %d줄)", vid, len(entries))
-    return await provider.generate(prompt)
+
+class TranscriptSummarizer(BaseSummarizer):
+    def __init__(self, provider: BaseProvider):
+        self._provider = provider
+
+    async def summarize(self, url: str) -> str | None:
+        vid = _extract_video_id(url)
+        video_url = _VIDEO_URL_BASE.format(vid=vid)
+        try:
+            entries = list(YouTubeTranscriptApi().fetch(vid, languages=["ko", "en"]))
+        except Exception as e:
+            logger.warning("자막 없음 (%s): %s", vid, e)
+            return None
+
+        transcript = _build_transcript_text(entries)
+        prompt = _PROMPT_TEMPLATE.format(url=video_url, transcript=transcript)
+        logger.info("요약 요청: %s (자막 %d줄)", vid, len(entries))
+        return await self._provider.generate(prompt)
