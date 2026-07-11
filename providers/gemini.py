@@ -8,10 +8,11 @@ from providers.base import BaseProvider
 
 logger = logging.getLogger(__name__)
 
-_MODEL = "gemini-3.5-flash"
+_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash")
 _API_KEY = os.environ.get("GEMINI_API_KEY", "")
 _URL = f"https://generativelanguage.googleapis.com/v1beta/models/{_MODEL}:generateContent?key={_API_KEY}"
 _MAX_RETRIES = 3
+_RETRYABLE_CODES = (429, 503)
 
 
 class GeminiProvider(BaseProvider):
@@ -30,9 +31,10 @@ class GeminiProvider(BaseProvider):
                 data = await loop.run_in_executor(None, self._call, req)
                 return data["candidates"][0]["content"]["parts"][0]["text"]
             except urllib.error.HTTPError as e:
-                if e.code == 429 and attempt < _MAX_RETRIES - 1:
-                    wait = 2 ** attempt
-                    logger.warning("429 rate limit, %d초 후 재시도 (%d/%d)", wait, attempt + 1, _MAX_RETRIES)
+                if e.code in _RETRYABLE_CODES and attempt < _MAX_RETRIES - 1:
+                    # runner의 요청 timeout이 120초라 총 대기(5+15=20초)를 그 안에 유지
+                    wait = 5 * 3 ** attempt
+                    logger.warning("%d %s, %d초 후 재시도 (%d/%d)", e.code, e.reason, wait, attempt + 1, _MAX_RETRIES)
                     await asyncio.sleep(wait)
                 else:
                     raise
