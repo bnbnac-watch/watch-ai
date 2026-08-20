@@ -1,10 +1,12 @@
 import asyncio
+from unittest.mock import AsyncMock
 
 import httpx
 import pytest
 
 import db
 import main
+from providers import gemini
 
 
 class _FakeSummarizer:
@@ -60,3 +62,11 @@ async def test_summarize_times_out_and_releases_semaphore(monkeypatch, client):
 
         assert res.status_code == 504
         assert main.app.state.semaphore.locked() is False
+
+
+async def test_lifespan_wires_semaphore_and_gemini_client(monkeypatch, fake_pool, fake_conn):
+    monkeypatch.setattr(db, "_pool", fake_pool)
+    monkeypatch.setattr(db, "init", AsyncMock())
+    async with main.lifespan(main.app):
+        assert main.app.state.semaphore._value == main.AI_CONCURRENCY
+        assert gemini._client is not None
