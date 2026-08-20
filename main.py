@@ -3,11 +3,13 @@ import logging
 import os
 from contextlib import asynccontextmanager
 
+import httpx
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 
 import db
+from providers import gemini
 from providers.gemini import GeminiProvider
 from summarizers.base import BaseSummarizer
 from summarizers.transcript import TranscriptSummarizer
@@ -17,6 +19,10 @@ logger = logging.getLogger(__name__)
 
 RPD_LIMIT = int(os.getenv("RPD_LIMIT", "1500"))
 SUMMARIZER_TYPE = os.getenv("SUMMARIZER", "transcript")
+AI_CONCURRENCY = int(os.getenv("AI_CONCURRENCY", "2"))
+# watch-runner/main.py의 _summarize() 클라이언트 타임아웃(120s)보다 반드시 작아야 한다 —
+# 그래야 watch-ai가 스스로 포기하는 시점이 runner가 포기하는 시점보다 항상 먼저 온다.
+SUMMARIZE_TIMEOUT_S = float(os.getenv("SUMMARIZE_TIMEOUT_S", "100"))
 
 
 def _build_summarizer() -> BaseSummarizer:
@@ -29,9 +35,11 @@ def _build_summarizer() -> BaseSummarizer:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await db.init()
-    app.state.summarizer = _build_summarizer()
-    app.state.semaphore = asyncio.Semaphore(1)
-    yield
+    async with httpx.AsyncClient() as client:
+        gemini.set_client(client)
+        app.state.summarizer = _build_summarizer()
+        app.state.semaphore = asyncio.Semaphore(AI_CONCURRENCY)
+        yield
 
 
 app = FastAPI(lifespan=lifespan)
@@ -54,7 +62,15 @@ async def summarize_video(req: SummarizeRequest, request: Request):
             logger.warning("RPD 한도 초과 (오늘 %d회)", count)
             raise HTTPException(status_code=429, detail="RPD 한도 초과")
 
-        result = await request.app.state.summarizer.summarize(req.url)
+        try:
+            result = await asyncio.wait_for(
+                request.app.state.summarizer.summarize(req.url),
+                timeout=SUMMARIZE_TIMEOUT_S,
+            )
+        except asyncio.TimeoutError:
+            logger.error("요약 시간 초과 (%s, %.0fs)", req.url, SUMMARIZE_TIMEOUT_S)
+            raise HTTPException(status_code=504, detail="요약 시간 초과")
+
         if result is None:
             raise HTTPException(status_code=404, detail="자막 없음")
 
