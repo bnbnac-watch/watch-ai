@@ -33,7 +33,7 @@ async def test_generate_retries_on_503_then_succeeds(monkeypatch):
     async def fast_sleep(_):
         return
 
-    monkeypatch.setattr(gemini.asyncio, "sleep", fast_sleep)
+    monkeypatch.setattr(gemini, "_sleep", fast_sleep)
 
     responses = [
         httpx.Response(503, json={"error": "unavailable"}),
@@ -56,7 +56,7 @@ async def test_generate_raises_after_exhausting_retries(monkeypatch):
     async def fast_sleep(_):
         return
 
-    monkeypatch.setattr(gemini.asyncio, "sleep", fast_sleep)
+    monkeypatch.setattr(gemini, "_sleep", fast_sleep)
 
     responses = [
         httpx.Response(503, json={"error": "unavailable"}),
@@ -69,3 +69,24 @@ async def test_generate_raises_after_exhausting_retries(monkeypatch):
         await GeminiProvider().generate("프롬프트")
 
     assert calls["n"] == 2
+
+
+async def test_api_key_sent_as_header_not_leaked_in_url_or_errors(monkeypatch):
+    monkeypatch.setattr(gemini, "_API_KEY", "SUPER_SECRET_KEY_123")
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["headers"] = request.headers
+        return httpx.Response(503, json={"error": "unavailable"})
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    gemini.set_client(client)
+    monkeypatch.setattr(gemini, "_MAX_RETRIES", 1)
+
+    with pytest.raises(httpx.HTTPStatusError) as exc_info:
+        await GeminiProvider().generate("프롬프트")
+
+    assert "SUPER_SECRET_KEY_123" not in captured["url"]
+    assert captured["headers"]["x-goog-api-key"] == "SUPER_SECRET_KEY_123"
+    assert "SUPER_SECRET_KEY_123" not in str(exc_info.value)

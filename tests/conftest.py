@@ -1,5 +1,17 @@
 import pytest
 
+import main
+from providers import gemini
+
+
+@pytest.fixture(autouse=True)
+def _reset_module_globals():
+    yield
+    gemini._client = None
+    for attr in ("summarizer", "semaphore"):
+        if hasattr(main.app.state, attr):
+            delattr(main.app.state, attr)
+
 
 class FakeConn:
     def __init__(self):

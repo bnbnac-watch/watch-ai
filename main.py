@@ -15,6 +15,7 @@ from summarizers.base import BaseSummarizer
 from summarizers.transcript import TranscriptSummarizer
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logging.getLogger("httpx").setLevel(logging.WARNING)  # 요청 URL(쿼리 포함) 로그 노출 방지
 logger = logging.getLogger(__name__)
 
 RPD_LIMIT = int(os.getenv("RPD_LIMIT", "1500"))
