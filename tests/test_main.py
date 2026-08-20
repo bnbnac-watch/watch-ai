@@ -64,9 +64,9 @@ async def test_summarize_times_out_and_releases_semaphore(monkeypatch, client):
         assert main.app.state.semaphore.locked() is False
 
 
-async def test_lifespan_wires_semaphore_and_gemini_client(monkeypatch, fake_pool, fake_conn):
-    monkeypatch.setattr(db, "_pool", fake_pool)
+async def test_lifespan_wires_semaphore_and_gemini_client(monkeypatch):
     monkeypatch.setattr(db, "init", AsyncMock())
+    monkeypatch.setattr(gemini, "_client", None)
     async with main.lifespan(main.app):
         assert main.app.state.semaphore._value == main.AI_CONCURRENCY
         assert gemini._client is not None
