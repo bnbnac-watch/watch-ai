@@ -13,6 +13,11 @@ _API_KEY = os.environ.get("GEMINI_API_KEY", "")
 _URL = f"https://generativelanguage.googleapis.com/v1beta/models/{_MODEL}:generateContent"
 _MAX_RETRIES = 3
 _RETRYABLE_CODES = (429, 503)
+# httpx는 timeout을 안 주면 기본 5초라 정상 요청도 끊긴다 — 최소한의 방어선.
+# 지금 유일한 호출 경로(main.py의 /summarize)는 이보다 훨씬 짧은
+# SUMMARIZE_TIMEOUT_S(기본 110s)로 전체를 감싸므로 이 300초가 실제로
+# 발동하는 일은 없다. wait_for 없이 이 provider를 직접 부르는 호출자가
+# 생기면 그때는 이 값이 유일한 상한이 된다.
 _REQUEST_TIMEOUT_S = 300.0
 
 _client: httpx.AsyncClient | None = None
