@@ -23,7 +23,7 @@ SUMMARIZER_TYPE = os.getenv("SUMMARIZER", "transcript")
 AI_CONCURRENCY = int(os.getenv("AI_CONCURRENCY", "2"))
 # watch-runner/main.py의 _summarize() 클라이언트 타임아웃(120s)보다 반드시 작아야 한다 —
 # 그래야 watch-ai가 스스로 포기하는 시점이 runner가 포기하는 시점보다 항상 먼저 온다.
-SUMMARIZE_TIMEOUT_S = float(os.getenv("SUMMARIZE_TIMEOUT_S", "100"))
+SUMMARIZE_TIMEOUT_S = float(os.getenv("SUMMARIZE_TIMEOUT_S", "110"))
 
 
 def _build_summarizer() -> BaseSummarizer:
