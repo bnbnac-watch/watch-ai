@@ -81,6 +81,24 @@ async def test_process_job_marks_not_retryable_when_no_captions(fake_pool, fake_
     assert args[2] is False  # retryable
 
 
+async def test_process_job_marks_retryable_on_unexpected_exception(fake_pool, fake_conn, monkeypatch):
+    monkeypatch.setattr(db, "_pool", fake_pool)
+    fake_conn.fetchrow_return = {"request_count": 1}
+
+    class _RaisingSummarizer:
+        async def summarize(self, url):
+            raise RuntimeError("Gemini 500")
+
+    semaphore = asyncio.Semaphore(1)
+
+    await main._process_job(uuid.uuid4(), "https://x", _RaisingSummarizer(), semaphore)
+
+    query, args = fake_conn.execute_calls[0]
+    assert "status = 'failed'" in query
+    assert args[2] is True  # retryable
+    assert semaphore.locked() is False
+
+
 async def test_process_job_marks_retryable_when_rpd_exceeded(fake_pool, fake_conn, monkeypatch):
     monkeypatch.setattr(db, "_pool", fake_pool)
     fake_conn.fetchrow_return = {"request_count": 9999}

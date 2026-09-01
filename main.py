@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import logging
 import os
 import uuid
@@ -22,10 +23,12 @@ logger = logging.getLogger(__name__)
 RPD_LIMIT = int(os.getenv("RPD_LIMIT", "1500"))
 SUMMARIZER_TYPE = os.getenv("SUMMARIZER", "transcript")
 AI_CONCURRENCY = int(os.getenv("AI_CONCURRENCY", "2"))
-# watch-runner/main.py의 _summarize() 클라이언트 타임아웃(120s)보다 반드시 작아야 한다 —
-# 그래야 watch-ai가 스스로 포기하는 시점이 runner가 포기하는 시점보다 항상 먼저 온다.
+# SUMMARIZE_TIMEOUT_S은 watch-runner의 job 대기 상한(300s)보다 작아야 한다 —
+# 그래야 이 서비스가 스스로 포기하는 시점이 runner가 포기하는 시점보다 항상 먼저 온다.
 SUMMARIZE_TIMEOUT_S = float(os.getenv("SUMMARIZE_TIMEOUT_S", "110"))
 SWEEP_INTERVAL_SECONDS = 3600
+# watch-runner의 wait_for_job 타임아웃(300s)보다 훨씬 커야 함 —
+# 안 그러면 아직 기다리는 job을 스윕이 먼저 failed 처리할 수 있음
 STALE_JOB_SECONDS = 3600
 
 
@@ -58,6 +61,10 @@ async def lifespan(app: FastAPI):
         sweep_task = asyncio.create_task(_sweep_loop())
         yield
         sweep_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await sweep_task
+        if app.state.background_tasks:
+            await asyncio.wait(app.state.background_tasks, timeout=15)
 
 
 app = FastAPI(lifespan=lifespan)
@@ -74,27 +81,31 @@ async def health():
 
 async def _process_job(job_id: uuid.UUID, url: str, summarizer, semaphore: asyncio.Semaphore):
     async with semaphore:
-        count = await db.increment_usage()
-        if count > RPD_LIMIT:
-            logger.warning("RPD 한도 초과 (오늘 %d회)", count)
-            await db.fail_job(job_id, "RPD 한도 초과", retryable=True)
-            return
-
         try:
-            result = await asyncio.wait_for(
-                summarizer.summarize(url), timeout=SUMMARIZE_TIMEOUT_S
-            )
-        except asyncio.TimeoutError:
-            logger.error("요약 시간 초과 (%s, %.0fs)", url, SUMMARIZE_TIMEOUT_S)
-            await db.fail_job(job_id, "요약 시간 초과", retryable=True)
-            return
+            count = await db.increment_usage()
+            if count > RPD_LIMIT:
+                logger.warning("RPD 한도 초과 (오늘 %d회)", count)
+                await db.fail_job(job_id, "RPD 한도 초과", retryable=True)
+                return
 
-        if result is None:
-            await db.fail_job(job_id, "자막 없음", retryable=False)
-            return
+            try:
+                result = await asyncio.wait_for(
+                    summarizer.summarize(url), timeout=SUMMARIZE_TIMEOUT_S
+                )
+            except asyncio.TimeoutError:
+                logger.error("요약 시간 초과 (%s, %.0fs)", url, SUMMARIZE_TIMEOUT_S)
+                await db.fail_job(job_id, "요약 시간 초과", retryable=True)
+                return
 
-        logger.info("요약 완료: %s (오늘 %d회)", url, count)
-        await db.complete_job(job_id, {"result": result})
+            if result is None:
+                await db.fail_job(job_id, "자막 없음", retryable=False)
+                return
+
+            logger.info("요약 완료: %s (오늘 %d회)", url, count)
+            await db.complete_job(job_id, {"result": result})
+        except Exception as exc:
+            logger.exception("요약 처리 중 예상치 못한 오류 (%s)", url)
+            await db.fail_job(job_id, f"처리 실패: {exc}", retryable=True)
 
 
 @app.post("/summarize", status_code=202)

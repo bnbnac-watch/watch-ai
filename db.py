@@ -43,7 +43,8 @@ async def complete_job(job_id: uuid.UUID, result: dict) -> None:
     async with _pool.acquire() as conn:
         async with conn.transaction():
             await conn.execute(
-                "UPDATE async_jobs SET status = 'done', result = $2, finished_at = now() WHERE id = $1",
+                "UPDATE async_jobs SET status = 'done', result = $2, finished_at = now() "
+                "WHERE id = $1 AND status = 'pending'",
                 job_id, result,
             )
             await conn.execute("SELECT pg_notify('async_job_done', $1)", str(job_id))
@@ -53,7 +54,8 @@ async def fail_job(job_id: uuid.UUID, error: str, retryable: bool) -> None:
     async with _pool.acquire() as conn:
         async with conn.transaction():
             await conn.execute(
-                "UPDATE async_jobs SET status = 'failed', error = $2, retryable = $3, finished_at = now() WHERE id = $1",
+                "UPDATE async_jobs SET status = 'failed', error = $2, retryable = $3, finished_at = now() "
+                "WHERE id = $1 AND status = 'pending'",
                 job_id, error, retryable,
             )
             await conn.execute("SELECT pg_notify('async_job_done', $1)", str(job_id))

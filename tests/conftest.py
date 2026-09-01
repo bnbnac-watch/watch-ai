@@ -8,7 +8,7 @@ from providers import gemini
 def _reset_module_globals():
     yield
     gemini._client = None
-    for attr in ("summarizer", "semaphore"):
+    for attr in ("summarizer", "semaphore", "background_tasks"):
         if hasattr(main.app.state, attr):
             delattr(main.app.state, attr)
 
