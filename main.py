@@ -54,6 +54,7 @@ async def lifespan(app: FastAPI):
         gemini.set_client(client)
         app.state.summarizer = _build_summarizer()
         app.state.semaphore = asyncio.Semaphore(AI_CONCURRENCY)
+        app.state.background_tasks = set()
         sweep_task = asyncio.create_task(_sweep_loop())
         yield
         sweep_task.cancel()
@@ -100,9 +101,11 @@ async def _process_job(job_id: uuid.UUID, url: str, summarizer, semaphore: async
 async def summarize_video(req: SummarizeRequest, request: Request):
     job_id = uuid.uuid4()
     await db.create_job(job_id, "summarize", {"url": req.url})
-    asyncio.create_task(
+    task = asyncio.create_task(
         _process_job(job_id, req.url, request.app.state.summarizer, request.app.state.semaphore)
     )
+    request.app.state.background_tasks.add(task)
+    task.add_done_callback(request.app.state.background_tasks.discard)
     return {"job_id": str(job_id)}
 
 

@@ -59,12 +59,14 @@ async def test_process_job_marks_retryable_on_timeout(fake_pool, fake_conn, monk
     fake_conn.fetchrow_return = {"request_count": 1}
     fake = _FakeSummarizer(delay=0.2)
     monkeypatch.setattr(main, "SUMMARIZE_TIMEOUT_S", 0.05)
+    semaphore = asyncio.Semaphore(1)
 
-    await main._process_job(uuid.uuid4(), "https://x", fake, asyncio.Semaphore(1))
+    await main._process_job(uuid.uuid4(), "https://x", fake, semaphore)
 
     query, args = fake_conn.execute_calls[0]
     assert "status = 'failed'" in query
     assert args[2] is True  # retryable
+    assert semaphore.locked() is False
 
 
 async def test_process_job_marks_not_retryable_when_no_captions(fake_pool, fake_conn, monkeypatch):
@@ -96,10 +98,26 @@ async def test_summarize_endpoint_returns_job_id_immediately(client):
     async with client:
         main.app.state.summarizer = _FakeSummarizer()
         main.app.state.semaphore = asyncio.Semaphore(2)
+        main.app.state.background_tasks = set()
         res = await client.post("/summarize", json={"url": "https://x"})
 
     assert res.status_code == 202
     uuid.UUID(res.json()["job_id"])  # 유효한 UUID 문자열인지 확인
+
+
+async def test_summarize_endpoint_tracks_background_task(client):
+    fake = _FakeSummarizer(delay=0.05)
+    async with client:
+        main.app.state.summarizer = fake
+        main.app.state.semaphore = asyncio.Semaphore(2)
+        main.app.state.background_tasks = set()
+        res = await client.post("/summarize", json={"url": "https://x"})
+
+        # 백그라운드 작업이 끝나기 전이므로 강한 참조가 집합에 남아 있어야 한다
+        # (asyncio.create_task의 결과를 저장하지 않으면 GC 대상이 되어 job이 유실될 수 있음).
+        assert len(main.app.state.background_tasks) >= 1
+
+    assert res.status_code == 202
 
 
 async def test_lifespan_wires_semaphore_and_gemini_client(monkeypatch):
