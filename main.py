@@ -25,7 +25,7 @@ SUMMARIZER_TYPE = os.getenv("SUMMARIZER", "transcript")
 AI_CONCURRENCY = int(os.getenv("AI_CONCURRENCY", "2"))
 # SUMMARIZE_TIMEOUT_S은 watch-runner의 job 대기 상한(300s)보다 작아야 한다 —
 # 그래야 이 서비스가 스스로 포기하는 시점이 runner가 포기하는 시점보다 항상 먼저 온다.
-SUMMARIZE_TIMEOUT_S = float(os.getenv("SUMMARIZE_TIMEOUT_S", "110"))
+SUMMARIZE_TIMEOUT_S = float(os.getenv("SUMMARIZE_TIMEOUT_S", "240"))
 SWEEP_INTERVAL_SECONDS = 3600
 # watch-runner의 wait_for_job 타임아웃(300s)보다 훨씬 커야 함 —
 # 안 그러면 아직 기다리는 job을 스윕이 먼저 failed 처리할 수 있음
