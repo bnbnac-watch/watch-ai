@@ -47,6 +47,18 @@ summarizers/transcript.py  TranscriptSummarizer(provider)                # 현�
 
 `main.py`는 `SUMMARIZER` 환경변수로 어떤 `BaseSummarizer` 구현을 쓸지 결정하고, 이후로는 `summarizer.summarize(url)`에만 의존한다. 자막 없는 영상까지 처리하려는 `GeminiNativeSummarizer`(Gemini fileData API 직접 호출)가 계획되어 있으나 미구현 — 구글 쪽 토큰 제한 완화를 기다리는 중이다. `BaseProvider`에는 Gemini 전용 메서드를 추가하지 않기로 했다 — provider 인터페이스가 특정 벤더 기능으로 오염되는 것을 막기 위함이며, native 방식은 provider 계층을 거치지 않고 `GeminiNativeSummarizer`가 API를 직접 호출하는 형태로 구현될 예정이다.
 
+### 의존성 주입 방식
+
+공유 자원(`httpx.AsyncClient`, summarizer, semaphore, background_tasks)은 `lifespan`에서 만들어 `app.state`에 두고, `httpx.AsyncClient`는 `GeminiProvider(client)`처럼 생성자로 주입한다. 모듈 전역 상태(`set_client` 같은)는 두지 않는다 — 테스트 간 상태 오염과 `None` client 호출 위험 때문에 한 번 제거한 것이다.
+
+핸들러에서 `app.state`를 직접 읽고 FastAPI `Depends`는 쓰지 않는다. `Depends`가 틀려서가 아니라 지금은 이득이 비용보다 작다고 판단했기 때문이다.
+
+- 엔드포인트가 `/summarize` 하나뿐이라 의존성 선언이 드러나는 이점이 작다.
+- 공유 자원은 어차피 `lifespan`에서 만들어 `app.state`에 둬야 하므로, `Depends`는 `request.app.state.x`를 꺼내 주는 얇은 getter(summarizer/semaphore/background_tasks 3개)가 될 뿐이다.
+- 테스트가 `app.state`를 직접 덮어쓰고 conftest에서 정리하는 방식으로 이미 동작한다.
+
+엔드포인트가 늘거나, 요청 단위로 열고 닫아야 하는 자원(요청별 DB 세션 등)이 생기거나, `dependency_overrides`로 교체해야 할 테스트가 늘면 `Depends`로 전환한다.
+
 ## Rate Limit / RPD 방어
 
 - Gemini 429(TPM/RPM 초과) 시 exponential backoff로 최대 3회 재시도(`GeminiProvider`)

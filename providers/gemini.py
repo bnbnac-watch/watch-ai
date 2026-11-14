@@ -29,23 +29,20 @@ _BACKOFF_CAP_S = 60
 # 생기면 그때는 이 값이 유일한 상한이 된다.
 _REQUEST_TIMEOUT_S = 300.0
 
-_client: httpx.AsyncClient | None = None
 _sleep = asyncio.sleep
 _random = random.random
 
 
-def set_client(client: httpx.AsyncClient):
-    global _client
-    _client = client
-
-
 class GeminiProvider(BaseProvider):
+    def __init__(self, client: httpx.AsyncClient):
+        self._client = client
+
     async def generate(self, prompt: str) -> str:
         body = {"contents": [{"parts": [{"text": prompt}]}]}
 
         for attempt in range(_MAX_RETRIES):
             try:
-                res = await _client.post(
+                res = await self._client.post(
                     _URL,
                     json=body,
                     headers={"x-goog-api-key": _API_KEY},
