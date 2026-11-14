@@ -21,9 +21,8 @@ async def test_generate_returns_text_on_success():
         "candidates": [{"content": {"parts": [{"text": "요약 결과"}]}}]
     })
     client, calls = _client_with_responses([resp])
-    gemini.set_client(client)
 
-    result = await GeminiProvider().generate("프롬프트")
+    result = await GeminiProvider(client).generate("프롬프트")
 
     assert result == "요약 결과"
     assert calls["n"] == 1
@@ -42,9 +41,8 @@ async def test_generate_retries_on_503_then_succeeds(monkeypatch):
         }),
     ]
     client, calls = _client_with_responses(responses)
-    gemini.set_client(client)
 
-    result = await GeminiProvider().generate("프롬프트")
+    result = await GeminiProvider(client).generate("프롬프트")
 
     assert result == "재시도 성공"
     assert calls["n"] == 2
@@ -63,10 +61,9 @@ async def test_generate_raises_after_exhausting_retries(monkeypatch):
         httpx.Response(503, json={"error": "unavailable"}),
     ]
     client, calls = _client_with_responses(responses)
-    gemini.set_client(client)
 
     with pytest.raises(httpx.HTTPStatusError):
-        await GeminiProvider().generate("프롬프트")
+        await GeminiProvider(client).generate("프롬프트")
 
     assert calls["n"] == 2
 
@@ -81,11 +78,10 @@ async def test_api_key_sent_as_header_not_leaked_in_url_or_errors(monkeypatch):
         return httpx.Response(503, json={"error": "unavailable"})
 
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
-    gemini.set_client(client)
     monkeypatch.setattr(gemini, "_MAX_RETRIES", 1)
 
     with pytest.raises(httpx.HTTPStatusError) as exc_info:
-        await GeminiProvider().generate("프롬프트")
+        await GeminiProvider(client).generate("프롬프트")
 
     assert "SUPER_SECRET_KEY_123" not in captured["url"]
     assert captured["headers"]["x-goog-api-key"] == "SUPER_SECRET_KEY_123"
@@ -110,9 +106,8 @@ async def test_generate_retries_up_to_five_times_by_default(monkeypatch):
         "candidates": [{"content": {"parts": [{"text": "5회차 성공"}]}}]
     }))
     client, calls = _client_with_responses(responses)
-    gemini.set_client(client)
 
-    assert await GeminiProvider().generate("프롬프트") == "5회차 성공"
+    assert await GeminiProvider(client).generate("프롬프트") == "5회차 성공"
     assert calls["n"] == 5
 
 
@@ -123,10 +118,9 @@ async def test_backoff_grows_exponentially_and_is_capped(monkeypatch):
     client, _ = _client_with_responses(
         [httpx.Response(503, json={"error": "unavailable"}) for _ in range(gemini._MAX_RETRIES)]
     )
-    gemini.set_client(client)
 
     with pytest.raises(httpx.HTTPStatusError):
-        await GeminiProvider().generate("프롬프트")
+        await GeminiProvider(client).generate("프롬프트")
 
     assert waits == [5, 10, 20, 40]
 
@@ -138,10 +132,9 @@ async def test_backoff_applies_jitter(monkeypatch):
     client, _ = _client_with_responses(
         [httpx.Response(503, json={"error": "unavailable"}) for _ in range(gemini._MAX_RETRIES)]
     )
-    gemini.set_client(client)
 
     with pytest.raises(httpx.HTTPStatusError):
-        await GeminiProvider().generate("프롬프트")
+        await GeminiProvider(client).generate("프롬프트")
 
     assert waits == [2.5, 5, 10, 20]
 

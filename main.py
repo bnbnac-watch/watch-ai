@@ -11,7 +11,6 @@ from fastapi import FastAPI, Request
 from pydantic import BaseModel
 
 import db
-from providers import gemini
 from providers.gemini import GeminiProvider
 from summarizers.base import BaseSummarizer
 from summarizers.transcript import TranscriptSummarizer
@@ -32,8 +31,8 @@ SWEEP_INTERVAL_SECONDS = 3600
 STALE_JOB_SECONDS = 3600
 
 
-def _build_summarizer() -> BaseSummarizer:
-    provider = GeminiProvider()
+def _build_summarizer(client: httpx.AsyncClient) -> BaseSummarizer:
+    provider = GeminiProvider(client)
     if SUMMARIZER_TYPE == "transcript":
         return TranscriptSummarizer(provider)
     raise ValueError(f"알 수 없는 SUMMARIZER: {SUMMARIZER_TYPE}")
@@ -54,8 +53,7 @@ async def _sweep_loop():
 async def lifespan(app: FastAPI):
     await db.init()
     async with httpx.AsyncClient() as client:
-        gemini.set_client(client)
-        app.state.summarizer = _build_summarizer()
+        app.state.summarizer = _build_summarizer(client)
         app.state.semaphore = asyncio.Semaphore(AI_CONCURRENCY)
         app.state.background_tasks = set()
         sweep_task = asyncio.create_task(_sweep_loop())
