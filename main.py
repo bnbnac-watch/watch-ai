@@ -11,16 +11,13 @@ from fastapi import FastAPI, Request
 from pydantic import BaseModel
 
 import db
-from providers.gemini import GeminiProvider
-from summarizers.base import BaseSummarizer
-from summarizers.transcript import TranscriptSummarizer
+from wiring import build_summarizer
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logging.getLogger("httpx").setLevel(logging.WARNING)  # 요청 URL(쿼리 포함) 로그 노출 방지
 logger = logging.getLogger(__name__)
 
 RPD_LIMIT = int(os.getenv("RPD_LIMIT", "1500"))
-SUMMARIZER_TYPE = os.getenv("SUMMARIZER", "transcript")
 AI_CONCURRENCY = int(os.getenv("AI_CONCURRENCY", "2"))
 # SUMMARIZE_TIMEOUT_S은 watch-runner의 job 대기 상한(300s)보다 작아야 한다 —
 # 그래야 이 서비스가 스스로 포기하는 시점이 runner가 포기하는 시점보다 항상 먼저 온다.
@@ -29,13 +26,6 @@ SWEEP_INTERVAL_SECONDS = 3600
 # watch-runner의 wait_for_job 타임아웃(300s)보다 훨씬 커야 함 —
 # 안 그러면 아직 기다리는 job을 스윕이 먼저 failed 처리할 수 있음
 STALE_JOB_SECONDS = 3600
-
-
-def _build_summarizer(client: httpx.AsyncClient) -> BaseSummarizer:
-    provider = GeminiProvider(client)
-    if SUMMARIZER_TYPE == "transcript":
-        return TranscriptSummarizer(provider)
-    raise ValueError(f"알 수 없는 SUMMARIZER: {SUMMARIZER_TYPE}")
 
 
 async def _sweep_loop():
@@ -53,7 +43,7 @@ async def _sweep_loop():
 async def lifespan(app: FastAPI):
     await db.init()
     async with httpx.AsyncClient() as client:
-        app.state.summarizer = _build_summarizer(client)
+        app.state.summarizer = build_summarizer(client)
         app.state.semaphore = asyncio.Semaphore(AI_CONCURRENCY)
         app.state.background_tasks = set()
         sweep_task = asyncio.create_task(_sweep_loop())
