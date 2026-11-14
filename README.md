@@ -45,7 +45,7 @@ summarizers/base.py     BaseSummarizer.summarize(url: str) -> str | None
 summarizers/transcript.py  TranscriptSummarizer(provider)                # 현재 사용 중
 ```
 
-`wiring.py`(composition root)가 `SUMMARIZER` 환경변수로 어떤 `BaseSummarizer` 구현을 쓸지 결정하고 `main.py`는 구체 클래스를 import하지 않는다. 이후로는 이후로는 `summarizer.summarize(url)`에만 의존한다. 자막 없는 영상까지 처리하려는 `GeminiNativeSummarizer`(Gemini fileData API 직접 호출)가 계획되어 있으나 미구현 — 구글 쪽 토큰 제한 완화를 기다리는 중이다. `BaseProvider`에는 Gemini 전용 메서드를 추가하지 않기로 했다 — provider 인터페이스가 특정 벤더 기능으로 오염되는 것을 막기 위함이며, native 방식은 provider 계층을 거치지 않고 `GeminiNativeSummarizer`가 API를 직접 호출하는 형태로 구현될 예정이다.
+`main.py`는 `SUMMARIZER` 환경변수로 어떤 `BaseSummarizer` 구현을 쓸지 결정하고, 이후로는 `summarizer.summarize(url)`에만 의존한다. 자막 없는 영상까지 처리하려는 `GeminiNativeSummarizer`(Gemini fileData API 직접 호출)가 계획되어 있으나 미구현 — 구글 쪽 토큰 제한 완화를 기다리는 중이다. `BaseProvider`에는 Gemini 전용 메서드를 추가하지 않기로 했다 — provider 인터페이스가 특정 벤더 기능으로 오염되는 것을 막기 위함이며, native 방식은 provider 계층을 거치지 않고 `GeminiNativeSummarizer`가 API를 직접 호출하는 형태로 구현될 예정이다.
 
 ### 의존성 주입 방식
 
@@ -74,7 +74,7 @@ summarizers/transcript.py  TranscriptSummarizer(provider)                # 현�
 | `DATABASE_URL` | (필수) | `ai_usage` 테이블 접근용 |
 | `GEMINI_API_KEY` | (필수) | |
 | `RPD_LIMIT` | 1500 | 일일 요청 한도 (추정치, AI Studio 콘솔 확인 필요) |
-| `SUMMARIZER` | `transcript` | `wiring.build_summarizer()`가 참조 — 현재 `transcript` 외 값은 에러 |
+| `SUMMARIZER` | `transcript` | `_build_summarizer()`가 참조 — 현재 `transcript` 외 값은 에러 |
 
 사용 모델: `gemini-3.5-flash` (RPM 10 / TPM 250,000 제한 하에서 동작).
 

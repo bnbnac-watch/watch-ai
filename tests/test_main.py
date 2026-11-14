@@ -7,7 +7,6 @@ import pytest
 
 import db
 import main
-from providers.gemini import GeminiProvider
 
 
 class _FakeSummarizer:
@@ -143,5 +142,5 @@ async def test_lifespan_wires_semaphore_and_gemini_client(monkeypatch):
     async with main.lifespan(main.app):
         assert main.app.state.semaphore._value == main.AI_CONCURRENCY
         provider = main.app.state.summarizer._provider
-        assert isinstance(provider, GeminiProvider)
+        assert isinstance(provider, main.GeminiProvider)
         assert provider._client is not None
